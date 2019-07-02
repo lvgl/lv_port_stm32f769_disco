@@ -10,14 +10,13 @@
  *      INCLUDES
  *********************/
 #include <stdint.h>
-#include "lvgl/lv_misc/lv_color.h"
-#include "lvgl/lv_misc/lv_area.h"
+#include "lvgl/lvgl.h"
 
 /*********************
  *      DEFINES
  *********************/
-#define TFT_HOR_RES LV_HOR_RES
-#define TFT_VER_RES LV_VER_RES
+#define TFT_HOR_RES LV_HOR_RES_MAX
+#define TFT_VER_RES LV_VER_RES_MAX
 
 
 /**********************

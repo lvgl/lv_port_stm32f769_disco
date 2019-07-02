@@ -7,8 +7,7 @@
  *      INCLUDES
  *********************/
 #include "lv_conf.h"
-#include "lvgl/lv_core/lv_vdb.h"
-#include "lvgl/lv_hal/lv_hal.h"
+#include "lvgl/lvgl.h"
 #include <string.h>
 
 #include "tft.h"
@@ -42,11 +41,8 @@
  *  STATIC PROTOTYPES
  **********************/
 
-/*These 3 functions are needed by LittlevGL*/
-static void tft_fill(int32_t x1, int32_t y1, int32_t x2, int32_t y2, lv_color_t color);
-static void tft_map(int32_t x1, int32_t y1, int32_t x2, int32_t y2, const lv_color_t * color_p);
-static void tft_flush(int32_t x1, int32_t y1, int32_t x2, int32_t y2, const lv_color_t * color_p);
-
+/*For LittlevGL*/
+static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t * color_p);
 
 /*LCD*/
 static void LCD_Config(void);
@@ -60,7 +56,7 @@ static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_
  **********************/
 
 extern LTDC_HandleTypeDef hltdc_discovery;
-static DMA2D_HandleTypeDef           hdma2d;
+static DMA2D_HandleTypeDef hdma2d;
 extern DSI_HandleTypeDef hdsi_discovery;
 DSI_VidCfgTypeDef hdsivideo_handle;
 DSI_CmdCfgTypeDef CmdCfg;
@@ -84,8 +80,6 @@ static uint32_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
  */
 void tft_init(void)
 {
-	lv_disp_drv_t disp_drv;
-	lv_disp_drv_init(&disp_drv);
 
 	BSP_SDRAM_Init();
 	LCD_Config();
@@ -102,7 +96,15 @@ void tft_init(void)
 	/*Refresh the LCD display*/
 	HAL_DSI_Refresh(&hdsi_discovery);
 
-	disp_drv.disp_flush = tft_flush;
+	static lv_disp_buf_t disp_buf;
+	static lv_color_t buf[TFT_HOR_RES * 100];
+	lv_disp_buf_init(&disp_buf, buf, NULL, TFT_HOR_RES * 100);
+
+
+	lv_disp_drv_t disp_drv;
+	lv_disp_drv_init(&disp_drv);
+	disp_drv.flush_cb = tft_flush_cb;
+	disp_drv.buffer = &disp_buf;
 
 	lv_disp_drv_register(&disp_drv);
 }
@@ -111,115 +113,14 @@ void tft_init(void)
  *   STATIC FUNCTIONS
  **********************/
 
-/**
- * Flush a color buffer
- * @param x1 left coordinate of the rectangle
- * @param x2 right coordinate of the rectangle
- * @param y1 top coordinate of the rectangle
- * @param y2 bottom coordinate of the rectangle
- * @param color_p pointer to an array of colors
- */
-static void tft_flush(int32_t x1, int32_t y1, int32_t x2, int32_t y2, const lv_color_t * color_p)
+static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t * color_p)
 {
-	/*Return if the area is out the screen*/
-	if(x2 < 0) return;
-	if(y2 < 0) return;
-	if(x1 > TFT_HOR_RES - 1) return;
-	if(y1 > TFT_VER_RES - 1) return;
 
-	CopyBuffer((const uint32_t *)color_p, my_fb, x1, y1, x2 - x1 + 1, y2 - y1 + 1);
+	CopyBuffer((const uint32_t *)color_p, my_fb, area->x1, area->y1, lv_area_get_width(area), lv_area_get_height(area));
 
 	HAL_DSI_Refresh(&hdsi_discovery);
 
-	lv_flush_ready();
-}
-
-/**
- * Fill a rectangular area with a color
- * @param x1 left coordinate of the rectangle
- * @param x2 right coordinate of the rectangle
- * @param y1 top coordinate of the rectangle
- * @param y2 bottom coordinate of the rectangle
- * @param color fill color
- */
-static void tft_fill(int32_t x1, int32_t y1, int32_t x2, int32_t y2, lv_color_t color)
-{
-	/*Return if the area is out the screen*/
-	if(x2 < 0) return;
-	if(y2 < 0) return;
-	if(x1 > TFT_HOR_RES - 1) return;
-	if(y1 > TFT_VER_RES - 1) return;
-
-	/*Truncate the area to the screen*/
-	int32_t act_x1 = x1 < 0 ? 0 : x1;
-	int32_t act_y1 = y1 < 0 ? 0 : y1;
-	int32_t act_x2 = x2 > TFT_HOR_RES - 1 ? TFT_HOR_RES - 1 : x2;
-	int32_t act_y2 = y2 > TFT_VER_RES - 1 ? TFT_VER_RES - 1 : y2;
-
-	uint32_t x;
-	uint32_t y;
-
-	/*Fill the remaining area*/
-	for(x = act_x1; x <= act_x2; x++) {
-		for(y = act_y1; y <= act_y2; y++) {
-			my_fb[y * TFT_HOR_RES + x] = color.full;
-		}
-	}
-}
-
-
-/**
- * Put a color map to a rectangular area
- * @param x1 left coordinate of the rectangle
- * @param x2 right coordinate of the rectangle
- * @param y1 top coordinate of the rectangle
- * @param y2 bottom coordinate of the rectangle
- * @param color_p pointer to an array of colors
- */
-static void tft_map(int32_t x1, int32_t y1, int32_t x2, int32_t y2, const lv_color_t * color_p)
-{
-	/*Return if the area is out the screen*/
-	if(x2 < 0) return;
-	if(y2 < 0) return;
-	if(x1 > TFT_HOR_RES - 1) return;
-	if(y1 > TFT_VER_RES - 1) return;
-
-	/*Truncate the area to the screen*/
-	int32_t act_x1 = x1 < 0 ? 0 : x1;
-	int32_t act_y1 = y1 < 0 ? 0 : y1;
-	int32_t act_x2 = x2 > TFT_HOR_RES - 1 ? TFT_HOR_RES - 1 : x2;
-	int32_t act_y2 = y2 > TFT_VER_RES - 1 ? TFT_VER_RES - 1 : y2;
-
-#if LV_VDB_DOUBLE == 0
-	uint32_t y;
-	for(y = act_y1; y <= act_y2; y++) {
-		memcpy((void*)&my_fb[y * TFT_HOR_RES + act_x1],
-				color_p,
-				(act_x2 - act_x1 + 1) * sizeof(my_fb[0]));
-		color_p += x2 - x1 + 1;    /*Skip the parts out of the screen*/
-	}
-#else
-
-	x1_flush = act_x1;
-	y1_flush = act_y1;
-	x2_flush = act_x2;
-	y2_fill = act_y2;
-	y_fill_act = act_y1;
-	buf_to_flush = color_p;
-
-
-	/*##-7- Start the DMA transfer using the interrupt mode #*/
-	/* Configure the source, destination and buffer size DMA fields and Start DMA Stream transfer */
-	/* Enable All the DMA interrupts */
-	if(HAL_DMA_Start_IT(&DmaHandle,(uint32_t)buf_to_flush, (uint32_t)&my_fb[y_fill_act * TFT_HOR_RES + x1_flush],
-			(x2_flush - x1_flush + 1)) != HAL_OK)
-	{
-		while(1)
-		{
-		}
-	}
-
-#endif
+	lv_disp_flush_ready(drv);
 }
 
 static void LCD_Config(void)
