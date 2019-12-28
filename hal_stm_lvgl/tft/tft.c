@@ -24,11 +24,11 @@
 #define VSYNC               OTM8009A_800X480_VSYNC
 #define VBP                 OTM8009A_800X480_VBP
 #define VFP                 OTM8009A_800X480_VFP
-#define VACT                480
+#define VACT                OTM8009A_800X480_HEIGHT
 #define HSYNC               OTM8009A_800X480_HSYNC
 #define HBP                 OTM8009A_800X480_HBP
 #define HFP                 OTM8009A_800X480_HFP
-#define HACT                800
+#define HACT                OTM8009A_800X480_WIDTH
 
 
 #define LAYER0_ADDRESS               (LCD_FB_START_ADDRESS)
@@ -83,6 +83,8 @@ void tft_init(void)
 
 	BSP_SDRAM_Init();
 	MPU_SDRAM_Config();
+	/* Deactivate speculative/cache access to first FMC Bank to save FMC bandwidth */
+	FMC_Bank1->BTCR[0] = 0x000030D2;
 	LCD_Config();
 	BSP_LCD_LayerDefaultInit(0, LAYER0_ADDRESS);
 	BSP_LCD_SelectLayer(0);
@@ -283,17 +285,14 @@ static void MPU_SDRAM_Config(void)
 	HAL_MPU_Disable();
 	HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
 
-	//Deactivate speculative/cache access to first FMC Bank to save FMC bandwidth
-	FMC_Bank1->BTCR[0] = 0x000030D2;
-
-	// Enable D-cache on SDRAM (Write-through)
+	// Disable caching of the frame buffer region
     MPU_InitStruct.Enable = MPU_REGION_ENABLE;
-    MPU_InitStruct.BaseAddress = 0xC0000000;
-    MPU_InitStruct.Size = MPU_REGION_SIZE_64MB;
-    MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+    MPU_InitStruct.BaseAddress = LAYER0_ADDRESS;
+    MPU_InitStruct.Size = MPU_REGION_SIZE_2MB;
+    MPU_InitStruct.AccessPermission = MPU_REGION_NO_ACCESS;
     MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
-    MPU_InitStruct.IsCacheable = MPU_ACCESS_CACHEABLE;
-    MPU_InitStruct.IsShareable = MPU_ACCESS_SHAREABLE;
+    MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
+    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
     MPU_InitStruct.Number = MPU_REGION_NUMBER0;
     MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
     MPU_InitStruct.SubRegionDisable = 0x00;
