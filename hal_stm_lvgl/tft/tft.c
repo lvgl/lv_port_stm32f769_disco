@@ -21,15 +21,15 @@
  *      DEFINES
  *********************/
 
+#define VSYNC               OTM8009A_800X480_VSYNC
+#define VBP                 OTM8009A_800X480_VBP
+#define VFP                 OTM8009A_800X480_VFP
+#define VACT                OTM8009A_800X480_HEIGHT
+#define HSYNC               OTM8009A_800X480_HSYNC
+#define HBP                 OTM8009A_800X480_HBP
+#define HFP                 OTM8009A_800X480_HFP
+#define HACT                OTM8009A_800X480_WIDTH
 
-#define VSYNC               1
-#define VBP                 1
-#define VFP                 1
-#define VACT                480
-#define HSYNC               1
-#define HBP                 1
-#define HFP                 1
-#define HACT                800
 
 #define LAYER0_ADDRESS               (LCD_FB_START_ADDRESS)
 
@@ -47,6 +47,7 @@ static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t
 /*LCD*/
 static void LCD_Config(void);
 static void LTDC_Init(void);
+static void MPU_SDRAM_Config(void);
 
 /*SD RAM*/
 static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_t y, uint16_t xsize, uint16_t ysize);
@@ -63,7 +64,6 @@ DSI_CmdCfgTypeDef CmdCfg;
 DSI_LPCmdTypeDef LPCmd;
 DSI_PLLInitTypeDef dsiPllInit;
 static RCC_PeriphCLKInitTypeDef  PeriphClkInitStruct;
-
 
 static uint32_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
 
@@ -82,6 +82,9 @@ void tft_init(void)
 {
 
 	BSP_SDRAM_Init();
+	MPU_SDRAM_Config();
+	/* Deactivate speculative/cache access to first FMC Bank to save FMC bandwidth */
+	FMC_Bank1->BTCR[0] = 0x000030D2;
 	LCD_Config();
 	BSP_LCD_LayerDefaultInit(0, LAYER0_ADDRESS);
 	BSP_LCD_SelectLayer(0);
@@ -100,7 +103,6 @@ void tft_init(void)
 	static lv_color_t buf[TFT_HOR_RES * 100];
 	lv_disp_buf_init(&disp_buf, buf, NULL, TFT_HOR_RES * 100);
 
-
 	lv_disp_drv_t disp_drv;
 	lv_disp_drv_init(&disp_drv);
 	disp_drv.flush_cb = tft_flush_cb;
@@ -115,6 +117,9 @@ void tft_init(void)
 
 static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t * color_p)
 {
+	SCB_InvalidateICache();
+
+	SCB_CleanInvalidateDCache();
 
 	CopyBuffer((const uint32_t *)color_p, my_fb, area->x1, area->y1, lv_area_get_width(area), lv_area_get_height(area));
 
@@ -272,52 +277,65 @@ static void LTDC_Init(void)
 	HAL_LTDC_Init(&hltdc_discovery);
 }
 
+static void MPU_SDRAM_Config(void)
+{
+
+	MPU_Region_InitTypeDef MPU_InitStruct;
+
+	HAL_MPU_Disable();
+	HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
+
+	// Disable caching of the frame buffer region
+    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
+    MPU_InitStruct.BaseAddress = LAYER0_ADDRESS;
+    MPU_InitStruct.Size = MPU_REGION_SIZE_2MB;
+    MPU_InitStruct.AccessPermission = MPU_REGION_NO_ACCESS;
+    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+    MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
+    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+    MPU_InitStruct.Number = MPU_REGION_NUMBER0;
+    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
+    MPU_InitStruct.SubRegionDisable = 0x00;
+    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
+
+	HAL_MPU_ConfigRegion(&MPU_InitStruct);
+}
 
 static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_t y, uint16_t xsize, uint16_t ysize)
 {
-	uint32_t row;
-	for(row = y; row < y + ysize; row++ ) {
-		memcpy(&pDst[row * 800 + x], pSrc, xsize * 4);
-		pSrc += xsize;
+	uint32_t destination = (uint32_t)pDst + (y * 800 + x) * 4;
+	uint32_t source      = (uint32_t)pSrc;
+
+	/*##-1- Configure the DMA2D Mode, Color Mode and output offset #############*/
+	hdma2d.Init.Mode         = DMA2D_M2M;
+	hdma2d.Init.ColorMode    = DMA2D_OUTPUT_ARGB8888;
+	hdma2d.Init.OutputOffset = 800 - xsize;
+	hdma2d.Init.AlphaInverted = DMA2D_REGULAR_ALPHA;  /* No Output Alpha Inversion*/
+	hdma2d.Init.RedBlueSwap   = DMA2D_RB_REGULAR;     /* No Output Red & Blue swap */
+
+	/*##-2- DMA2D Callbacks Configuration ######################################*/
+	hdma2d.XferCpltCallback  = NULL;
+
+	/*##-3- Foreground Configuration ###########################################*/
+	hdma2d.LayerCfg[1].AlphaMode = DMA2D_NO_MODIF_ALPHA;
+	hdma2d.LayerCfg[1].InputAlpha = 0xFF;
+	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
+	hdma2d.LayerCfg[1].InputOffset = 0;
+	hdma2d.LayerCfg[1].RedBlueSwap = DMA2D_RB_REGULAR; /* No ForeGround Red/Blue swap */
+	hdma2d.LayerCfg[1].AlphaInverted = DMA2D_REGULAR_ALPHA; /* No ForeGround Alpha inversion */
+
+	hdma2d.Instance          = DMA2D;
+
+	/* DMA2D Initialization */
+	if(HAL_DMA2D_Init(&hdma2d) == HAL_OK)
+	{
+		if(HAL_DMA2D_ConfigLayer(&hdma2d, 1) == HAL_OK)
+		{
+			if (HAL_DMA2D_Start(&hdma2d, source, destination, xsize, ysize) == HAL_OK)
+			{
+				/* Polling For DMA transfer */
+				HAL_DMA2D_PollForTransfer(&hdma2d, 100);
+			}
+		}
 	}
-
-	/**********************
-	 * Using DMA2D should be better and faster but makes artifacts on the screen
-	 **********************/
-
-//	uint32_t destination = (uint32_t)pDst + (y * 800 + x) * 4;
-//	uint32_t source      = (uint32_t)pSrc;
-//
-//	/*##-1- Configure the DMA2D Mode, Color Mode and output offset #############*/
-//	hdma2d.Init.Mode         = DMA2D_M2M;
-//	hdma2d.Init.ColorMode    = DMA2D_OUTPUT_ARGB8888;
-//	hdma2d.Init.OutputOffset = 800 - xsize;
-//	hdma2d.Init.AlphaInverted = DMA2D_REGULAR_ALPHA;  /* No Output Alpha Inversion*/
-//	hdma2d.Init.RedBlueSwap   = DMA2D_RB_REGULAR;     /* No Output Red & Blue swap */
-//
-//	/*##-2- DMA2D Callbacks Configuration ######################################*/
-//	hdma2d.XferCpltCallback  = NULL;
-//
-//	/*##-3- Foreground Configuration ###########################################*/
-//	hdma2d.LayerCfg[1].AlphaMode = DMA2D_NO_MODIF_ALPHA;
-//	hdma2d.LayerCfg[1].InputAlpha = 0xFF;
-//	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
-//	hdma2d.LayerCfg[1].InputOffset = 0;
-//	hdma2d.LayerCfg[1].RedBlueSwap = DMA2D_RB_REGULAR; /* No ForeGround Red/Blue swap */
-//	hdma2d.LayerCfg[1].AlphaInverted = DMA2D_REGULAR_ALPHA; /* No ForeGround Alpha inversion */
-//
-//	hdma2d.Instance          = DMA2D;
-//
-//	/* DMA2D Initialization */
-//	if(HAL_DMA2D_Init(&hdma2d) == HAL_OK)
-//	{
-//		if(HAL_DMA2D_ConfigLayer(&hdma2d, 1) == HAL_OK)
-//		{
-//			if (HAL_DMA2D_Start(&hdma2d, source, destination, xsize, ysize) == HAL_OK)
-//			{
-//				/* Polling For DMA transfer */
-//				HAL_DMA2D_PollForTransfer(&hdma2d, 100);
-//			}
-//		}
-//	}
 }
