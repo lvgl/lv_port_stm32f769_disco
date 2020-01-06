@@ -52,6 +52,12 @@ static void MPU_SDRAM_Config(void);
 /*SD RAM*/
 static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_t y, uint16_t xsize, uint16_t ysize);
 
+/*Chrom-ART Accelerator functions*/
+static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord_t dest_width, const lv_area_t *fill_area, lv_color_t color);
+static void DMA2D_FillRect(uint32_t DstAddress, uint32_t width, uint32_t height, uint32_t color);
+static void gpu_blend_cb(lv_disp_drv_t *disp_drv, lv_color_t *dest, const lv_color_t *src, uint32_t length, lv_opa_t opa);
+static void DMA2D_Blend(uint32_t source, uint32_t destination, uint32_t width, uint8_t opacity);
+
 /**********************
  *  STATIC VARIABLES
  **********************/
@@ -80,7 +86,6 @@ static uint32_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
  */
 void tft_init(void)
 {
-
 	BSP_SDRAM_Init();
 	MPU_SDRAM_Config();
 	/* Deactivate speculative/cache access to first FMC Bank to save FMC bandwidth */
@@ -107,7 +112,8 @@ void tft_init(void)
 	lv_disp_drv_init(&disp_drv);
 	disp_drv.flush_cb = tft_flush_cb;
 	disp_drv.buffer = &disp_buf;
-
+	disp_drv.gpu_fill_cb = gpu_fill_cb;
+	disp_drv.gpu_blend_cb = gpu_blend_cb;
 	lv_disp_drv_register(&disp_drv);
 }
 
@@ -118,14 +124,108 @@ void tft_init(void)
 static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t * color_p)
 {
 	SCB_InvalidateICache();
+	SCB_CleanInvalidateDCache();
+	CopyBuffer((const uint32_t *)color_p, my_fb, area->x1, area->y1, lv_area_get_width(area), lv_area_get_height(area));
+	HAL_DSI_Refresh(&hdsi_discovery);
+	lv_disp_flush_ready(drv);
+}
 
+static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_t y, uint16_t xsize, uint16_t ysize)
+{
+	uint32_t destination = (uint32_t)pDst + (y * 800 + x) * 4;
+	uint32_t source      = (uint32_t)pSrc;
+
+	/*##-1- Configure the DMA2D Mode, Color Mode and output offset #############*/
+	hdma2d.Init.Mode         = DMA2D_M2M;
+	hdma2d.Init.ColorMode    = DMA2D_OUTPUT_ARGB8888;
+	hdma2d.Init.OutputOffset = 800 - xsize;
+	hdma2d.Init.AlphaInverted = DMA2D_REGULAR_ALPHA;  /* No Output Alpha Inversion*/
+	hdma2d.Init.RedBlueSwap   = DMA2D_RB_REGULAR;     /* No Output Red & Blue swap */
+
+	/*##-2- DMA2D Callbacks Configuration ######################################*/
+	hdma2d.XferCpltCallback  = NULL;
+
+	/*##-3- Foreground Configuration ###########################################*/
+	hdma2d.LayerCfg[1].AlphaMode = DMA2D_NO_MODIF_ALPHA;
+	hdma2d.LayerCfg[1].InputAlpha = DMA2D_NO_MODIF_ALPHA;
+	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
+	hdma2d.LayerCfg[1].InputOffset = 0;
+	hdma2d.LayerCfg[1].RedBlueSwap = DMA2D_RB_REGULAR; /* No ForeGround Red/Blue swap */
+	hdma2d.LayerCfg[1].AlphaInverted = DMA2D_REGULAR_ALPHA; /* No ForeGround Alpha inversion */
+
+	hdma2d.Instance          = DMA2D;
+
+	/* DMA2D Initialization */
+	if(HAL_DMA2D_Init(&hdma2d) == HAL_OK)
+	{
+		if(HAL_DMA2D_ConfigLayer(&hdma2d, 1) == HAL_OK)
+		{
+			if (HAL_DMA2D_Start(&hdma2d, source, destination, xsize, ysize) == HAL_OK)
+			{
+				/* Polling For DMA transfer */
+				HAL_DMA2D_PollForTransfer(&hdma2d, 10);
+			}
+		}
+	}
+}
+
+static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord_t dest_width, const lv_area_t *fill_area, lv_color_t color)
+{
+	SCB_InvalidateICache();
+	SCB_CleanInvalidateDCache();
+	uint32_t xsize = fill_area->x2 - fill_area->x1 + 1;
+	uint32_t ysize = fill_area->y2 - fill_area->y1 + 1;
+	uint32_t destination = (uint32_t) dest_buf + (fill_area->x1 + fill_area->y1 * TFT_HOR_RES) * 4;
+	hdma2d.Instance = DMA2D;
+	hdma2d.Init.Mode = DMA2D_R2M;
+	hdma2d.Init.ColorMode = DMA2D_OUTPUT_ARGB8888;
+	hdma2d.Init.OutputOffset = TFT_HOR_RES - xsize;
+	hdma2d.LayerCfg[1].InputAlpha = DMA2D_NO_MODIF_ALPHA;
+	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
+	hdma2d.XferCpltCallback = NULL;
+
+	/* DMA2D Initialization */
+	if (HAL_DMA2D_Init(&hdma2d) == HAL_OK) {
+		if (HAL_DMA2D_ConfigLayer(&hdma2d, 1) == HAL_OK) {
+			if (HAL_DMA2D_Start(&hdma2d, lv_color_to32(color), destination, xsize, ysize) == HAL_OK) {
+				/* Polling For DMA transfer */
+				HAL_DMA2D_PollForTransfer(&hdma2d, 10);
+			}
+		}
+	}
+}
+
+static void gpu_blend_cb(lv_disp_drv_t *disp_drv, lv_color_t *dest, const lv_color_t *src, uint32_t length, lv_opa_t opa)
+{
+	SCB_InvalidateICache();
 	SCB_CleanInvalidateDCache();
 
-	CopyBuffer((const uint32_t *)color_p, my_fb, area->x1, area->y1, lv_area_get_width(area), lv_area_get_height(area));
+	hdma2d.Instance = DMA2D;
+	hdma2d.Init.Mode = DMA2D_M2M_BLEND;
+	hdma2d.Init.OutputOffset = 0;
 
-	HAL_DSI_Refresh(&hdsi_discovery);
+	/* Foreground layer */
+	hdma2d.LayerCfg[1].AlphaMode = DMA2D_REPLACE_ALPHA;
+	hdma2d.LayerCfg[1].InputAlpha = opa;
+	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
+	hdma2d.LayerCfg[1].InputOffset = 0;
+	hdma2d.LayerCfg[1].AlphaInverted = DMA2D_REGULAR_ALPHA;
 
-	lv_disp_flush_ready(drv);
+	/* Background layer */
+	hdma2d.LayerCfg[0].AlphaMode = DMA2D_NO_MODIF_ALPHA;
+	hdma2d.LayerCfg[0].InputColorMode = DMA2D_INPUT_ARGB8888;
+	hdma2d.LayerCfg[0].InputOffset = 0;
+
+	/* DMA2D Initialization */
+	if (HAL_DMA2D_Init(&hdma2d) == HAL_OK) {
+		if (HAL_DMA2D_ConfigLayer(&hdma2d, 0) == HAL_OK && HAL_DMA2D_ConfigLayer(&hdma2d, 1) == HAL_OK) {
+			if (HAL_DMA2D_BlendingStart(&hdma2d, (uint32_t) src, (uint32_t) dest, (uint32_t) dest, length, 1) == HAL_OK) {
+				/* Polling for DMA transfer */
+				HAL_DMA2D_PollForTransfer(&hdma2d, 10);
+			}
+		}
+	}
+
 }
 
 static void LCD_Config(void)
@@ -299,43 +399,4 @@ static void MPU_SDRAM_Config(void)
     MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
 
 	HAL_MPU_ConfigRegion(&MPU_InitStruct);
-}
-
-static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_t y, uint16_t xsize, uint16_t ysize)
-{
-	uint32_t destination = (uint32_t)pDst + (y * 800 + x) * 4;
-	uint32_t source      = (uint32_t)pSrc;
-
-	/*##-1- Configure the DMA2D Mode, Color Mode and output offset #############*/
-	hdma2d.Init.Mode         = DMA2D_M2M;
-	hdma2d.Init.ColorMode    = DMA2D_OUTPUT_ARGB8888;
-	hdma2d.Init.OutputOffset = 800 - xsize;
-	hdma2d.Init.AlphaInverted = DMA2D_REGULAR_ALPHA;  /* No Output Alpha Inversion*/
-	hdma2d.Init.RedBlueSwap   = DMA2D_RB_REGULAR;     /* No Output Red & Blue swap */
-
-	/*##-2- DMA2D Callbacks Configuration ######################################*/
-	hdma2d.XferCpltCallback  = NULL;
-
-	/*##-3- Foreground Configuration ###########################################*/
-	hdma2d.LayerCfg[1].AlphaMode = DMA2D_NO_MODIF_ALPHA;
-	hdma2d.LayerCfg[1].InputAlpha = 0xFF;
-	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
-	hdma2d.LayerCfg[1].InputOffset = 0;
-	hdma2d.LayerCfg[1].RedBlueSwap = DMA2D_RB_REGULAR; /* No ForeGround Red/Blue swap */
-	hdma2d.LayerCfg[1].AlphaInverted = DMA2D_REGULAR_ALPHA; /* No ForeGround Alpha inversion */
-
-	hdma2d.Instance          = DMA2D;
-
-	/* DMA2D Initialization */
-	if(HAL_DMA2D_Init(&hdma2d) == HAL_OK)
-	{
-		if(HAL_DMA2D_ConfigLayer(&hdma2d, 1) == HAL_OK)
-		{
-			if (HAL_DMA2D_Start(&hdma2d, source, destination, xsize, ysize) == HAL_OK)
-			{
-				/* Polling For DMA transfer */
-				HAL_DMA2D_PollForTransfer(&hdma2d, 100);
-			}
-		}
-	}
 }

@@ -46,8 +46,8 @@ int main(void)
 	touchpad_init();
 
 //	demo_create();
-//	benchmark_create();
-	lv_test_theme_2();
+	benchmark_create();
+//	lv_test_theme_2();
 
 	while(1) {
 		lv_task_handler();
