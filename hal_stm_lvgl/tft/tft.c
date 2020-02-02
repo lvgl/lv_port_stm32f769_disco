@@ -47,21 +47,26 @@ static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t
 /*LCD*/
 static void LCD_Config(void);
 static void LTDC_Init(void);
-static void MPU_SDRAM_Config(void);
 
 /*SD RAM*/
 static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_t y, uint16_t xsize, uint16_t ysize);
 
+#if LV_USE_GPU == 1
+static void MPU_SDRAM_Config(void);
+
 /*Chrom-ART Accelerator functions*/
 static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord_t dest_width, const lv_area_t *fill_area, lv_color_t color);
 static void gpu_blend_cb(lv_disp_drv_t *disp_drv, lv_color_t *dest, const lv_color_t *src, uint32_t length, lv_opa_t opa);
+#endif
 
 /**********************
  *  STATIC VARIABLES
  **********************/
 
 extern LTDC_HandleTypeDef hltdc_discovery;
+#if LV_USE_GPU == 1
 static DMA2D_HandleTypeDef hdma2d;
+#endif
 extern DSI_HandleTypeDef hdsi_discovery;
 DSI_VidCfgTypeDef hdsivideo_handle;
 DSI_CmdCfgTypeDef CmdCfg;
@@ -85,7 +90,9 @@ static uint32_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
 void tft_init(void)
 {
 	BSP_SDRAM_Init();
+#if LV_USE_GPU == 1
 	MPU_SDRAM_Config();
+#endif
 	/* Deactivate speculative/cache access to first FMC Bank to save FMC bandwidth */
 	FMC_Bank1->BTCR[0] = 0x000030D2;
 	LCD_Config();
@@ -110,8 +117,10 @@ void tft_init(void)
 	lv_disp_drv_init(&disp_drv);
 	disp_drv.flush_cb = tft_flush_cb;
 	disp_drv.buffer = &disp_buf;
+#if LV_USE_GPU == 1
 	disp_drv.gpu_fill_cb = gpu_fill_cb;
 	disp_drv.gpu_blend_cb = NULL;
+#endif
 	lv_disp_drv_register(&disp_drv);
 }
 
@@ -121,8 +130,9 @@ void tft_init(void)
 
 static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t * color_p)
 {
-	SCB_InvalidateICache();
+#if LV_USE_GPU == 1
 	SCB_CleanInvalidateDCache();
+#endif
 	CopyBuffer((const uint32_t *)color_p, my_fb, area->x1, area->y1, lv_area_get_width(area), lv_area_get_height(area));
 	HAL_DSI_Refresh(&hdsi_discovery);
 	lv_disp_flush_ready(drv);
@@ -130,13 +140,20 @@ static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t
 
 static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_t y, uint16_t xsize, uint16_t ysize)
 {
-	uint32_t destination = (uint32_t)pDst + (y * 800 + x) * 4;
+#if LV_USE_GPU == 0
+	uint32_t row;
+	for(row = y; row < y + ysize; row++ ) {
+		memcpy(&pDst[row * 800 + x], pSrc, xsize * 4);
+		pSrc += xsize;
+	}
+#else
+	uint32_t destination = (uint32_t)pDst + (y * TFT_HOR_RES + x) * 4;
 	uint32_t source      = (uint32_t)pSrc;
 
 	/*##-1- Configure the DMA2D Mode, Color Mode and output offset #############*/
 	hdma2d.Init.Mode         = DMA2D_M2M;
 	hdma2d.Init.ColorMode    = DMA2D_OUTPUT_ARGB8888;
-	hdma2d.Init.OutputOffset = 800 - xsize;
+	hdma2d.Init.OutputOffset = TFT_HOR_RES - xsize;
 	hdma2d.Init.AlphaInverted = DMA2D_REGULAR_ALPHA;  /* No Output Alpha Inversion*/
 	hdma2d.Init.RedBlueSwap   = DMA2D_RB_REGULAR;     /* No Output Red & Blue swap */
 
@@ -165,11 +182,13 @@ static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_
 			}
 		}
 	}
+#endif
 }
+
+#if LV_USE_GPU == 1
 
 static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord_t dest_width, const lv_area_t *fill_area, lv_color_t color)
 {
-	SCB_InvalidateICache();
 	SCB_CleanInvalidateDCache();
 
 	uint32_t width = fill_area->x2 - fill_area->x1 + 1;
@@ -199,7 +218,6 @@ static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord
 
 static void gpu_blend_cb(lv_disp_drv_t *disp_drv, lv_color_t *dest, const lv_color_t *src, uint32_t length, lv_opa_t opa)
 {
-	SCB_InvalidateICache();
 	SCB_CleanInvalidateDCache();
 
 	hdma2d.Instance = DMA2D;
@@ -229,6 +247,31 @@ static void gpu_blend_cb(lv_disp_drv_t *disp_drv, lv_color_t *dest, const lv_col
 	}
 
 }
+
+static void MPU_SDRAM_Config(void)
+{
+	MPU_Region_InitTypeDef MPU_InitStruct;
+
+	HAL_MPU_Disable();
+	HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
+
+	// Disable caching of the frame buffer region
+    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
+    MPU_InitStruct.BaseAddress = LAYER0_ADDRESS;
+    MPU_InitStruct.Size = MPU_REGION_SIZE_2MB;
+    MPU_InitStruct.AccessPermission = MPU_REGION_NO_ACCESS;
+    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+    MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
+    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+    MPU_InitStruct.Number = MPU_REGION_NUMBER0;
+    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
+    MPU_InitStruct.SubRegionDisable = 0x00;
+    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
+
+	HAL_MPU_ConfigRegion(&MPU_InitStruct);
+}
+
+#endif
 
 static void LCD_Config(void)
 {
@@ -377,28 +420,4 @@ static void LTDC_Init(void)
 	hltdc_discovery.Instance = LTDC;
 
 	HAL_LTDC_Init(&hltdc_discovery);
-}
-
-static void MPU_SDRAM_Config(void)
-{
-
-	MPU_Region_InitTypeDef MPU_InitStruct;
-
-	HAL_MPU_Disable();
-	HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
-
-	// Disable caching of the frame buffer region
-    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
-    MPU_InitStruct.BaseAddress = LAYER0_ADDRESS;
-    MPU_InitStruct.Size = MPU_REGION_SIZE_2MB;
-    MPU_InitStruct.AccessPermission = MPU_REGION_NO_ACCESS;
-    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
-    MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
-    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
-    MPU_InitStruct.Number = MPU_REGION_NUMBER0;
-    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
-    MPU_InitStruct.SubRegionDisable = 0x00;
-    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
-
-	HAL_MPU_ConfigRegion(&MPU_InitStruct);
 }
