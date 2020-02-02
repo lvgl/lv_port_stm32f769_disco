@@ -54,9 +54,7 @@ static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_
 
 /*Chrom-ART Accelerator functions*/
 static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord_t dest_width, const lv_area_t *fill_area, lv_color_t color);
-static void DMA2D_FillRect(uint32_t DstAddress, uint32_t width, uint32_t height, uint32_t color);
 static void gpu_blend_cb(lv_disp_drv_t *disp_drv, lv_color_t *dest, const lv_color_t *src, uint32_t length, lv_opa_t opa);
-static void DMA2D_Blend(uint32_t source, uint32_t destination, uint32_t width, uint8_t opacity);
 
 /**********************
  *  STATIC VARIABLES
@@ -113,7 +111,7 @@ void tft_init(void)
 	disp_drv.flush_cb = tft_flush_cb;
 	disp_drv.buffer = &disp_buf;
 	disp_drv.gpu_fill_cb = gpu_fill_cb;
-	disp_drv.gpu_blend_cb = gpu_blend_cb;
+	disp_drv.gpu_blend_cb = NULL;
 	lv_disp_drv_register(&disp_drv);
 }
 
@@ -160,7 +158,7 @@ static void CopyBuffer(const uint32_t *pSrc, uint32_t *pDst, uint16_t x, uint16_
 	{
 		if(HAL_DMA2D_ConfigLayer(&hdma2d, 1) == HAL_OK)
 		{
-			if (HAL_DMA2D_Start(&hdma2d, source, destination, xsize, ysize) == HAL_OK)
+			if (HAL_DMA2D_BlendingStart(&hdma2d, source, destination, destination, xsize, ysize) == HAL_OK)
 			{
 				/* Polling For DMA transfer */
 				HAL_DMA2D_PollForTransfer(&hdma2d, 10);
@@ -173,13 +171,14 @@ static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord
 {
 	SCB_InvalidateICache();
 	SCB_CleanInvalidateDCache();
-	uint32_t xsize = fill_area->x2 - fill_area->x1 + 1;
-	uint32_t ysize = fill_area->y2 - fill_area->y1 + 1;
-	uint32_t destination = (uint32_t) dest_buf + (fill_area->x1 + fill_area->y1 * TFT_HOR_RES) * 4;
+
+	uint32_t width = fill_area->x2 - fill_area->x1 + 1;
+	lv_color_t * destination = dest_buf + (dest_width * fill_area->y1 + fill_area->x1);
+
 	hdma2d.Instance = DMA2D;
 	hdma2d.Init.Mode = DMA2D_R2M;
 	hdma2d.Init.ColorMode = DMA2D_OUTPUT_ARGB8888;
-	hdma2d.Init.OutputOffset = TFT_HOR_RES - xsize;
+	hdma2d.Init.OutputOffset = dest_width - width;
 	hdma2d.LayerCfg[1].InputAlpha = DMA2D_NO_MODIF_ALPHA;
 	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
 	hdma2d.XferCpltCallback = NULL;
@@ -187,9 +186,12 @@ static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord
 	/* DMA2D Initialization */
 	if (HAL_DMA2D_Init(&hdma2d) == HAL_OK) {
 		if (HAL_DMA2D_ConfigLayer(&hdma2d, 1) == HAL_OK) {
-			if (HAL_DMA2D_Start(&hdma2d, lv_color_to32(color), destination, xsize, ysize) == HAL_OK) {
-				/* Polling For DMA transfer */
-				HAL_DMA2D_PollForTransfer(&hdma2d, 10);
+			for(uint32_t line = fill_area->y1; line <= fill_area->y2; line++) {
+				if (HAL_DMA2D_BlendingStart(&hdma2d, lv_color_to32(color), (uint32_t)destination, (uint32_t)destination, width, 1) == HAL_OK) {
+					destination += width;
+					/* Polling For DMA transfer */
+					HAL_DMA2D_PollForTransfer(&hdma2d, 10);
+				}
 			}
 		}
 	}
