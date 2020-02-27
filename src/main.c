@@ -14,13 +14,15 @@
 #include "hal_stm_lvgl/tft/tft.h"
 #include "hal_stm_lvgl/touchpad/touchpad.h"
 #include "lvgl/lvgl.h"
-#include "lv_examples/lv_tests/lv_test_theme/lv_test_theme_2.h"
+#include "lv_examples/lv_examples.h"
 
 static void SystemClock_Config(void);
 static void CPU_CACHE_Enable(void);
 
-int main(void)
-{
+//static uint8_t buf[LV_IMG_BUF_SIZE_TRUE_COLOR(200, 200)];
+
+void g_test(void);
+int main(void){
 
 	/* Enable the CPU Cache */
 	CPU_CACHE_Enable();
@@ -45,9 +47,18 @@ int main(void)
 	tft_init();
 	touchpad_init();
 
-//	demo_create();
-//	benchmark_create();
-	lv_test_theme_2();
+	lv_demo_widgets();
+	while (1)
+	{
+		HAL_Delay(10);
+//		t1 = lv_tick_get();
+		lv_task_handler();
+//		memset(buf, 0xFF, sizeof(buf));
+//		lv_canvas_rotate(canvas, &tree, a, 20, 50, 80, 50);
+//		tdiff = lv_tick_elaps(t1);
+//			a++;
+//		if(a > 360) a = 0;
+	}
 
 	while(1) {
 		lv_task_handler();

@@ -1,6 +1,6 @@
 /**
  * @file disp.c
- * 
+ *
  */
 
 /*********************
@@ -74,6 +74,11 @@ static uint32_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
 /**********************
  *   GLOBAL FUNCTIONS
  **********************/
+static volatile uint32_t t_saved = 0;
+void monitor_cb(lv_disp_drv_t * d, uint32_t t, uint32_t p)
+{
+	t_saved = t;
+}
 
 /**
  * Initialize your display here
@@ -97,13 +102,14 @@ void tft_init(void)
 	HAL_DSI_Refresh(&hdsi_discovery);
 
 	static lv_disp_buf_t disp_buf;
-	static lv_color_t buf[TFT_HOR_RES * 100];
-	lv_disp_buf_init(&disp_buf, buf, NULL, TFT_HOR_RES * 100);
+	static lv_color_t buf[TFT_HOR_RES * 48];
+	lv_disp_buf_init(&disp_buf, buf, NULL, TFT_HOR_RES * 48);
 
 
 	lv_disp_drv_t disp_drv;
 	lv_disp_drv_init(&disp_drv);
 	disp_drv.flush_cb = tft_flush_cb;
+	disp_drv.monitor_cb = monitor_cb;
 	disp_drv.buffer = &disp_buf;
 
 	lv_disp_drv_register(&disp_drv);
