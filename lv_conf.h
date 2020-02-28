@@ -250,7 +250,7 @@ typedef void * lv_indev_drv_user_data_t;            /*Type of user data in the i
 
 /* 1: Print the log with 'printf';
  * 0: user need to register a callback with `lv_log_register_print_cb`*/
-#  define LV_LOG_PRINTF   1
+#  define LV_LOG_PRINTF   0
 #endif  /*LV_USE_LOG*/
 
 /*=================
