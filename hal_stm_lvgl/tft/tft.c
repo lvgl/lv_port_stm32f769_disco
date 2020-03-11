@@ -50,6 +50,7 @@ static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord
 static void LCD_Config(void);
 static void LTDC_Init(void);
 static void MPU_SDRAM_Config(void);
+static void DMA2D_TransferComplete(DMA2D_HandleTypeDef *han);
 
 /**********************
  *  STATIC VARIABLES
