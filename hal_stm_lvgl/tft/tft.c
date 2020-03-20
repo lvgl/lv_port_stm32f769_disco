@@ -21,6 +21,14 @@
  *      DEFINES
  *********************/
 
+/* DMA Stream parameters definitions. You can modify these parameters to select
+   a different DMA Stream and/or channel.
+   But note that only DMA2 Streams are capable of Memory to Memory transfers. */
+#define DMA_STREAM               DMA2_Stream0
+#define DMA_CHANNEL              DMA_CHANNEL_0
+#define DMA_STREAM_IRQ           DMA2_Stream0_IRQn
+#define DMA_STREAM_IRQHANDLER    DMA2_Stream0_IRQHandler
+
 #define VSYNC               OTM8009A_800X480_VSYNC
 #define VBP                 OTM8009A_800X480_VBP
 #define VFP                 OTM8009A_800X480_VFP
@@ -51,6 +59,13 @@ static void LCD_Config(void);
 static void LTDC_Init(void);
 static void MPU_SDRAM_Config(void);
 
+static void DMA2D_TransferComplete(DMA2D_HandleTypeDef *han);
+
+/*DMA to flush to frame buffer*/
+static void DMA_Config(void);
+static void DMA_TransferComplete(DMA_HandleTypeDef *han);
+static void DMA_TransferError(DMA_HandleTypeDef *han);
+
 /**********************
  *  STATIC VARIABLES
  **********************/
@@ -69,6 +84,16 @@ static uint32_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
 static lv_disp_drv_t disp_drv;
 static volatile bool gpu_busy;
 static volatile bool copy_buf;
+
+static DMA_HandleTypeDef     DmaHandle;
+static lv_disp_drv_t disp_drv;
+static int32_t x1_flush;
+static int32_t y1_flush;
+static int32_t x2_flush;
+static int32_t y2_fill;
+static int32_t y_fill_act;
+static const lv_color_t * buf_to_flush;
+
 /**********************
  *      MACROS
  **********************/
@@ -103,6 +128,8 @@ void tft_init(void)
 			OTM8009A_CMD_DISPON,
 			0x00);
 
+	DMA_Config();
+
 	/*Refresh the LCD display*/
 	HAL_DSI_Refresh(&hdsi_discovery);
 
@@ -127,50 +154,33 @@ void tft_init(void)
 
 static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t * color_p)
 {
-	SCB_InvalidateICache();
-
 	SCB_CleanInvalidateDCache();
 
-	while(gpu_busy);
+	/*Truncate the area to the screen*/
+	int32_t act_x1 = area->x1 < 0 ? 0 : area->x1;
+	int32_t act_y1 = area->y1 < 0 ? 0 : area->y1;
+	int32_t act_x2 = area->x2 > TFT_HOR_RES - 1 ? TFT_HOR_RES - 1 : area->x2;
+	int32_t act_y2 = area->y2 > TFT_VER_RES - 1 ? TFT_VER_RES - 1 : area->y2;
 
-	uint8_t * pDst = (uint8_t*)my_fb;
-	uint8_t * pSrc = (uint8_t*)color_p;
-	uint32_t xsize = lv_area_get_width(area);
-	uint32_t ysize = lv_area_get_height(area);
-	uint32_t destination = (uint32_t)pDst + (area->y1 * 800 + area->x1) * 4;
-	uint32_t source      = (uint32_t)pSrc;
+	x1_flush = act_x1;
+	y1_flush = act_y1;
+	x2_flush = act_x2;
+	y2_fill = act_y2;
+	y_fill_act = act_y1;
+	buf_to_flush = color_p;
 
-	/*##-1- Configure the DMA2D Mode, Color Mode and output offset #############*/
-	hdma2d.Init.Mode         = DMA2D_M2M;
-	hdma2d.Init.ColorMode    = DMA2D_OUTPUT_ARGB8888;
-	hdma2d.Init.OutputOffset = 800 - xsize;
-	hdma2d.Init.AlphaInverted = DMA2D_REGULAR_ALPHA;  /* No Output Alpha Inversion*/
-	hdma2d.Init.RedBlueSwap   = DMA2D_RB_REGULAR;     /* No Output Red & Blue swap */
 
-	/*##-2- DMA2D Callbacks Configuration ######################################*/
-	hdma2d.XferCpltCallback  = NULL;
-
-	/*##-3- Foreground Configuration ###########################################*/
-	hdma2d.LayerCfg[1].AlphaMode = DMA2D_NO_MODIF_ALPHA;
-	hdma2d.LayerCfg[1].InputAlpha = 0xFF;
-	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
-	hdma2d.LayerCfg[1].InputOffset = 0;
-	hdma2d.LayerCfg[1].RedBlueSwap = DMA2D_RB_REGULAR; /* No ForeGround Red/Blue swap */
-	hdma2d.LayerCfg[1].AlphaInverted = DMA2D_REGULAR_ALPHA; /* No ForeGround Alpha inversion */
-
-	hdma2d.XferCpltCallback = DMA2D_TransferComplete;
-	hdma2d.Instance          = DMA2D;
-	HAL_NVIC_SetPriority(DMA2D_IRQn, 0, 0);
-	HAL_NVIC_EnableIRQ(DMA2D_IRQn);
-
-	/* DMA2D Initialization */
-	if(HAL_DMA2D_Init(&hdma2d) == HAL_OK) {
-		if(HAL_DMA2D_ConfigLayer(&hdma2d, 1) == HAL_OK) {
-			gpu_busy = true;
-			copy_buf = true;
-			HAL_DMA2D_Start_IT(&hdma2d, source, destination, xsize, ysize);
-		}
+	  /*##-7- Start the DMA transfer using the interrupt mode #*/
+	  /* Configure the source, destination and buffer size DMA fields and Start DMA Stream transfer */
+	  /* Enable All the DMA interrupts */
+	HAL_StatusTypeDef err;
+	err = HAL_DMA_Start_IT(&DmaHandle,(uint32_t)buf_to_flush, (uint32_t)&my_fb[y_fill_act * TFT_HOR_RES + x1_flush],
+			  (x2_flush - x1_flush + 1));
+	if(err != HAL_OK)
+	{
+		while(1);	/*Halt on error*/
 	}
+
 }
 
 static void LCD_Config(void)
@@ -310,7 +320,7 @@ static void gpu_fill_cb(lv_disp_drv_t *drv, lv_color_t *dest_buf, const lv_coord
 			lv_coord_t h = lv_area_get_height(fill_area);
 			gpu_busy = true;
 			copy_buf = false;
-			HAL_DMA2D_BlendingStart_IT(&hdma2d, lv_color_to32(color), (uint32_t)destination, (uint32_t)destination, w, h);
+			HAL_DMA2D_Start_IT(&hdma2d, lv_color_to32(color), (uint32_t)destination, w, h);
 		}
 	}
 	while(gpu_busy);
@@ -418,6 +428,110 @@ void DMA2D_IRQHandler(void)
     /* Check the interrupt and clear flag */
     HAL_DMA2D_IRQHandler(&hdma2d);
 }
+
+
+
+/**
+  * @brief  Configure the DMA controller according to the Stream parameters
+  *         defined in main.h file
+  * @note  This function is used to :
+  *        -1- Enable DMA2 clock
+  *        -2- Select the DMA functional Parameters
+  *        -3- Select the DMA instance to be used for the transfer
+  *        -4- Select Callbacks functions called after Transfer complete and
+               Transfer error interrupt detection
+  *        -5- Initialize the DMA stream
+  *        -6- Configure NVIC for DMA transfer complete/error interrupts
+  * @param  None
+  * @retval None
+  */
+static void DMA_Config(void)
+{
+  /*## -1- Enable DMA2 clock #################################################*/
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /*##-2- Select the DMA functional Parameters ###############################*/
+  DmaHandle.Init.Channel = DMA_CHANNEL;                     /* DMA_CHANNEL_0                    */
+  DmaHandle.Init.Direction = DMA_MEMORY_TO_MEMORY;          /* M2M transfer mode                */
+  DmaHandle.Init.PeriphInc = DMA_PINC_ENABLE;               /* Peripheral increment mode Enable */
+  DmaHandle.Init.MemInc = DMA_MINC_ENABLE;                  /* Memory increment mode Enable     */
+  DmaHandle.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD; /* Peripheral data alignment : 16bit */
+  DmaHandle.Init.MemDataAlignment = DMA_MDATAALIGN_WORD;    /* memory data alignment : 16bit     */
+  DmaHandle.Init.Mode = DMA_NORMAL;                         /* Normal DMA mode                  */
+  DmaHandle.Init.Priority = DMA_PRIORITY_HIGH;              /* priority level : high            */
+  DmaHandle.Init.FIFOMode = DMA_FIFOMODE_ENABLE;            /* FIFO mode enabled                */
+  DmaHandle.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_1QUARTERFULL; /* FIFO threshold: 1/4 full   */
+  DmaHandle.Init.MemBurst = DMA_MBURST_SINGLE;              /* Memory burst                     */
+  DmaHandle.Init.PeriphBurst = DMA_PBURST_SINGLE;           /* Peripheral burst                 */
+
+  /*##-3- Select the DMA instance to be used for the transfer : DMA2_Stream0 #*/
+  DmaHandle.Instance = DMA_STREAM;
+
+  /*##-4- Initialize the DMA stream ##########################################*/
+  if(HAL_DMA_Init(&DmaHandle) != HAL_OK)
+  {
+    while(1);
+  }
+
+  /*##-5- Select Callbacks functions called after Transfer complete and Transfer error */
+  HAL_DMA_RegisterCallback(&DmaHandle, HAL_DMA_XFER_CPLT_CB_ID, DMA_TransferComplete);
+  HAL_DMA_RegisterCallback(&DmaHandle, HAL_DMA_XFER_ERROR_CB_ID, DMA_TransferError);
+
+  /*##-6- Configure NVIC for DMA transfer complete/error interrupts ##########*/
+  HAL_NVIC_SetPriority(DMA_STREAM_IRQ, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA_STREAM_IRQ);
+}
+
+/**
+  * @brief  DMA conversion complete callback
+  * @note   This function is executed when the transfer complete interrupt
+  *         is generated
+  * @retval None
+  */
+static void DMA_TransferComplete(DMA_HandleTypeDef *han)
+{
+	y_fill_act ++;
+
+	if(y_fill_act > y2_fill) {
+		HAL_DSI_Refresh(&hdsi_discovery);
+		lv_disp_flush_ready(&disp_drv);
+	} else {
+	  buf_to_flush += x2_flush - x1_flush + 1;
+	  /*##-7- Start the DMA transfer using the interrupt mode ####################*/
+	  /* Configure the source, destination and buffer size DMA fields and Start DMA Stream transfer */
+	  /* Enable All the DMA interrupts */
+	  if(HAL_DMA_Start_IT(han,(uint32_t)buf_to_flush, (uint32_t)&my_fb[y_fill_act * TFT_HOR_RES + x1_flush],
+						  (x2_flush - x1_flush + 1)) != HAL_OK)
+	  {
+	    while(1);	/*Halt on error*/
+	  }
+	}
+}
+
+/**
+  * @brief  DMA conversion error callback
+  * @note   This function is executed when the transfer error interrupt
+  *         is generated during DMA transfer
+  * @retval None
+  */
+static void DMA_TransferError(DMA_HandleTypeDef *han)
+{
+
+}
+
+
+
+/**
+  * @brief  This function handles DMA Stream interrupt request.
+  * @param  None
+  * @retval None
+  */
+void DMA_STREAM_IRQHANDLER(void)
+{
+    /* Check the interrupt and clear flag */
+    HAL_DMA_IRQHandler(&DmaHandle);
+}
+
 
 
 static void DMA2D_TransferComplete(DMA2D_HandleTypeDef *han)
