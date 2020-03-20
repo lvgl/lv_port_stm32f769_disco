@@ -41,24 +41,12 @@ int main(void){
 
 	SystemClock_Config();
 
-
 	lv_init();
 
 	tft_init();
 	touchpad_init();
 
 	lv_demo_widgets();
-	while (1)
-	{
-		HAL_Delay(10);
-//		t1 = lv_tick_get();
-		lv_task_handler();
-//		memset(buf, 0xFF, sizeof(buf));
-//		lv_canvas_rotate(canvas, &tree, a, 20, 50, 80, 50);
-//		tdiff = lv_tick_elaps(t1);
-//			a++;
-//		if(a > 360) a = 0;
-	}
 
 	while(1) {
 		lv_task_handler();
