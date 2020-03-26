@@ -143,8 +143,8 @@ void tft_init(void)
 	disp_drv.flush_cb = tft_flush_cb;
 	disp_drv.monitor_cb = monitor_cb;
 	disp_drv.buffer = &disp_buf;
-	disp_drv.gpu_blend_cb = gpu_blend_cb;
-	disp_drv.gpu_fill_cb = gpu_fill_cb;
+//	disp_drv.gpu_blend_cb = gpu_blend_cb;
+//	disp_drv.gpu_fill_cb = gpu_fill_cb;
 
 	lv_disp_drv_register(&disp_drv);
 }
@@ -494,7 +494,7 @@ static void DMA_TransferComplete(DMA_HandleTypeDef *han)
 	y_fill_act ++;
 
 	if(y_fill_act > y2_fill) {
-		HAL_DSI_Refresh(&hdsi_discovery);
+		if(disp_drv.buffer->flushing_last) HAL_DSI_Refresh(&hdsi_discovery);
 		lv_disp_flush_ready(&disp_drv);
 	} else {
 	  buf_to_flush += x2_flush - x1_flush + 1;
@@ -542,7 +542,7 @@ static void DMA2D_TransferComplete(DMA2D_HandleTypeDef *han)
 
 	if(copy_buf) {
 		copy_buf = false;
-		HAL_DSI_Refresh(&hdsi_discovery);
+		if(disp_drv.buffer->flushing_last) HAL_DSI_Refresh(&hdsi_discovery);
 		lv_disp_flush_ready(&disp_drv);
 	}
 
