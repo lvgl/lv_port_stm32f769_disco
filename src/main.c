@@ -19,10 +19,7 @@
 static void SystemClock_Config(void);
 static void CPU_CACHE_Enable(void);
 
-//static uint8_t buf[LV_IMG_BUF_SIZE_TRUE_COLOR(200, 200)];
-
-void g_test(void);
-int main(void){
+int main(void) {
 
 	/* Enable the CPU Cache */
 	CPU_CACHE_Enable();
@@ -49,9 +46,8 @@ int main(void){
 	lv_demo_widgets();
 
 	while(1) {
-		lv_task_handler();
+	    lv_task_handler();
 		HAL_Delay(5);
-
 	}
 }
 

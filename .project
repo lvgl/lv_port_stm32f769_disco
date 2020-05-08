@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>stm32f769_discovery_no_os</name>
+	<name>lv_port_stm32f769_disco</name>
 	<comment></comment>
 	<projects>
 	</projects>
