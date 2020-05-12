@@ -17,6 +17,7 @@
  *********************/
 #define TFT_HOR_RES LV_HOR_RES_MAX
 #define TFT_VER_RES LV_VER_RES_MAX
+#define TFT_NO_TEARING 0
 
 
 /**********************

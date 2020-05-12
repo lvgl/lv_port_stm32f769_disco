@@ -29,6 +29,12 @@
 #define DMA_STREAM_IRQ           DMA2_Stream0_IRQn
 #define DMA_STREAM_IRQHANDLER    DMA2_Stream0_IRQHandler
 
+#if TFT_NO_TEARING
+#define ZONES               4       /*Divide the screen into zones to handle tearing effect*/
+#else
+#define ZONES               1
+#endif
+
 #define VSYNC               OTM8009A_800X480_VSYNC
 #define VBP                 OTM8009A_800X480_VBP
 #define VFP                 OTM8009A_800X480_VFP
@@ -36,9 +42,10 @@
 #define HSYNC               OTM8009A_800X480_HSYNC
 #define HBP                 OTM8009A_800X480_HBP
 #define HFP                 OTM8009A_800X480_HFP
-#define HACT                OTM8009A_800X480_WIDTH
+#define HACT                (OTM8009A_800X480_WIDTH / ZONES)
 
 #define LAYER0_ADDRESS               (LCD_FB_START_ADDRESS)
+#define LAYER1_ADDRESS               (LCD_FB_START_ADDRESS + 800*480*4)
 
 /**********************
  *      TYPEDEFS
@@ -88,7 +95,28 @@ static volatile int32_t y2_flush;
 static volatile int32_t y_flush_act;
 static volatile const lv_color_t * buf_to_flush;
 
+static volatile bool refr_qry;
 static volatile uint32_t t_last = 0;
+
+#if TFT_NO_TEARING
+uint8_t pPage[]       = {0x00, 0x00, 0x01, 0xDF}; /*   0 -> 479 */
+
+
+uint8_t pCols[ZONES][4] =
+{
+#if (ZONES == 4 )
+  {0x00, 0x00, 0x00, 0xC7}, /*   0 -> 199 */
+  {0x00, 0xC8, 0x01, 0x8F}, /* 200 -> 399 */
+  {0x01, 0x90, 0x02, 0x57}, /* 400 -> 599 */
+  {0x02, 0x58, 0x03, 0x1F}, /* 600 -> 799 */
+#elif (ZONES == 2 )
+  {0x00, 0x00, 0x01, 0x8F}, /*   0 -> 399 */
+  {0x01, 0x90, 0x03, 0x1F}
+#elif (ZONES == 1 )
+  {0x00, 0x00, 0x03, 0x1F}, /*   0 -> 799 */
+#endif
+};
+#endif
 
 /**********************
  *      MACROS
@@ -116,8 +144,6 @@ void tft_init(void)
 	/* Deactivate speculative/cache access to first FMC Bank to save FMC bandwidth */
 	FMC_Bank1->BTCR[0] = 0x000030D2;
 	LCD_Config();
-	BSP_LCD_LayerDefaultInit(0, LAYER0_ADDRESS);
-	BSP_LCD_SelectLayer(0);
 
 	/* Send Display On DCS Command to display */
 	HAL_DSI_ShortWrite(&(hdsi_discovery),
@@ -219,7 +245,7 @@ static void LCD_Config(void)
 	CmdCfg.DEPolarity            = DSI_DATA_ENABLE_ACTIVE_HIGH;
 	CmdCfg.ColorCoding           = DSI_RGB888;
 	CmdCfg.CommandSize           = HACT;
-	CmdCfg.TearingEffectSource   = DSI_TE_DSILINK;
+	CmdCfg.TearingEffectSource   = DSI_TE_EXTERNAL;
 	CmdCfg.TearingEffectPolarity = DSI_TE_RISING_EDGE;
 	CmdCfg.VSyncPol              = DSI_VSYNC_FALLING;
 	CmdCfg.AutomaticRefresh      = DSI_AR_DISABLE;
@@ -281,10 +307,52 @@ static void LCD_Config(void)
 			OTM8009A_CMD_DISPOFF,
 			0x00);
 
-	/* Refresh the display */
-	HAL_DSI_Refresh(&hdsi_discovery);
+
+#if TFT_NO_TEARING
+	  HAL_DSI_LongWrite(&hdsi_discovery, 0, DSI_DCS_LONG_PKT_WRITE, 4, OTM8009A_CMD_CASET, pCols[0]);
+	  HAL_DSI_LongWrite(&hdsi_discovery, 0, DSI_DCS_LONG_PKT_WRITE, 4, OTM8009A_CMD_PASET, pPage);
+
+	/* Enable GPIOJ clock */
+	__HAL_RCC_GPIOJ_CLK_ENABLE();
+
+	/* Configure DSI_TE pin from MB1166 : Tearing effect on separated GPIO from KoD LCD */
+	/* that is mapped on GPIOJ2 as alternate DSI function (DSI_TE)                      */
+	/* This pin is used only when the LCD and DSI link is configured in command mode    */
+	/* Not used in DSI Video mode.
+	 */
+	GPIO_InitTypeDef  GPIO_Init_Structure;
+	GPIO_Init_Structure.Pin       = GPIO_PIN_2;
+	GPIO_Init_Structure.Mode      = GPIO_MODE_AF_PP;
+	GPIO_Init_Structure.Pull      = GPIO_NOPULL;
+	GPIO_Init_Structure.Speed     = GPIO_SPEED_HIGH;
+	GPIO_Init_Structure.Alternate = GPIO_AF13_DSI;
+	HAL_GPIO_Init(GPIOJ, &GPIO_Init_Structure);
+
+	static uint8_t ScanLineParams[2];
+#if ZONES == 2
+	uint16_t scanline = 200;
+#elif ZONES == 4
+	uint16_t scanline = 283;
+#endif
+	ScanLineParams[0] = scanline >> 8;
+	ScanLineParams[1] = scanline & 0x00FF;
+
+	HAL_DSI_LongWrite(&hdsi_discovery, 0, DSI_DCS_LONG_PKT_WRITE, 2, 0x44, ScanLineParams);
+	/* set_tear_on */
+	HAL_DSI_ShortWrite(&hdsi_discovery, 0, DSI_DCS_SHORT_PKT_WRITE_P1, OTM8009A_CMD_TEEON, 0x00);
+#endif
+
 }
 
+#if TFT_NO_TEARING
+/**
+* LCD_SetUpdateRegion
+*/
+void LCD_SetUpdateRegion(int idx)
+{
+  HAL_DSI_LongWrite(&hdsi_discovery, 0, DSI_DCS_LONG_PKT_WRITE, 4, OTM8009A_CMD_CASET, pCols[idx]);
+}
+#endif
 /**
  * @brief
  * @param  None
@@ -321,41 +389,77 @@ static void LTDC_Init(void)
 	HAL_LTDC_Init(&hltdc_discovery);
 
 
-	  /*##-6- Configure NVIC for DMA transfer complete/error interrupts ##########*/
-//	  HAL_NVIC_SetPriority(LTDC_IRQn, 0, 0);
+    LCD_LayerCfgTypeDef  Layercfg;
 
-//	  /* Set LTDC Interrupt to the lowest priority */
-	  HAL_NVIC_SetPriority(LTDC_IRQn, 0xF, 0);
+   /* Layer Init */
+   Layercfg.WindowX0 = 0;
+   Layercfg.WindowX1 = HACT;
+   Layercfg.WindowY0 = 0;
+   Layercfg.WindowY1 = BSP_LCD_GetYSize();
+   Layercfg.PixelFormat = LTDC_PIXEL_FORMAT_ARGB8888;
+   Layercfg.FBStartAdress = LAYER0_ADDRESS;
+   Layercfg.Alpha = 255;
+   Layercfg.Alpha0 = 0;
+   Layercfg.Backcolor.Blue = 0;
+   Layercfg.Backcolor.Green = 0;
+   Layercfg.Backcolor.Red = 0;
+   Layercfg.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA;
+   Layercfg.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
+   Layercfg.ImageWidth = 800;
+   Layercfg.ImageHeight = BSP_LCD_GetYSize();
 
-	  /* Enable LTDC Interrupt */
-	  HAL_NVIC_EnableIRQ(LTDC_IRQn);
+   HAL_LTDC_ConfigLayer(&hltdc_discovery, &Layercfg, 0);
 
-	  HAL_NVIC_EnableIRQ(DMA_STREAM_IRQ);
-
-
-      HAL_LTDC_Reload(&hltdc_discovery, LTDC_RELOAD_VERTICAL_BLANKING);
 }
 
-void DMA2D_IRQHandler(void)
+#if TFT_NO_TEARING
+static volatile uint32_t LCD_ActiveRegion;
+
+/**
+  * @brief  Tearing Effect DSI callback.
+  * @param  hdsi: pointer to a DSI_HandleTypeDef structure that contains
+  *               the configuration information for the DSI.
+  * @retval None
+  */
+void HAL_DSI_TearingEffectCallback(DSI_HandleTypeDef *hdsi)
 {
-    /* Check the interrupt and clear flag */
-    HAL_DMA2D_IRQHandler(&hdma2d);
+    if(refr_qry) {
+        LCD_ActiveRegion = 1;
+        HAL_DSI_Refresh(hdsi);
+        refr_qry = false;
+    }
 }
 
-
-void LTDC_IRQHandler(void)
+void HAL_DSI_EndOfRefreshCallback(DSI_HandleTypeDef *hdsi)
 {
-    /* Check the interrupt and clear flag */
-    HAL_LTDC_IRQHandler(&hltdc_discovery);
-}
 
-volatile static uint32_t cnt = 0;
-void HAL_LTDC_ReloadEventCallback(LTDC_HandleTypeDef *hltdc)
-{
-    HAL_LTDC_Reload(&hltdc_discovery, LTDC_RELOAD_VERTICAL_BLANKING);
-    cnt++;
-}
+    if(LCD_ActiveRegion < ZONES )
+    {
+        /* Disable DSI Wrapper */
+        __HAL_DSI_WRAPPER_DISABLE(hdsi);
+        /* Update LTDC configuaration */
+        LTDC_LAYER(&hltdc_discovery, 0)->CFBAR  = LAYER0_ADDRESS + LCD_ActiveRegion  * HACT * 4;
+        __HAL_LTDC_RELOAD_CONFIG(&hltdc_discovery);
+        __HAL_DSI_WRAPPER_ENABLE(hdsi);
 
+        LCD_SetUpdateRegion(LCD_ActiveRegion++);
+        /* Refresh the right part of the display */
+        HAL_DSI_Refresh(hdsi);
+
+    }
+    else
+    {
+        __HAL_DSI_WRAPPER_DISABLE(&hdsi_discovery);
+        LTDC_LAYER(&hltdc_discovery, 0)->CFBAR  = LAYER0_ADDRESS;
+
+        __HAL_LTDC_RELOAD_CONFIG(&hltdc_discovery);
+        __HAL_DSI_WRAPPER_ENABLE(&hdsi_discovery);
+
+        LCD_SetUpdateRegion(0);
+        if(disp_drv.buffer)  lv_disp_flush_ready(&disp_drv);
+    }
+}
+#endif
 
 /**
   * @brief  Configure the DMA controller according to the Stream parameters
@@ -419,8 +523,14 @@ static void DMA_TransferComplete(DMA_HandleTypeDef *han)
 	y_flush_act ++;
 
 	if(y_flush_act > y2_flush) {
+#if TFT_NO_TEARING
+		if(lv_disp_flush_is_last(&disp_drv)) refr_qry = true;
+		else lv_disp_flush_ready(&disp_drv);
+#else
 		if(lv_disp_flush_is_last(&disp_drv)) HAL_DSI_Refresh(&hdsi_discovery);
+
 		lv_disp_flush_ready(&disp_drv);
+#endif
 	} else {
 	  buf_to_flush += x2_flush - x1_flush + 1;
 	  /*##-7- Start the DMA transfer using the interrupt mode ####################*/
