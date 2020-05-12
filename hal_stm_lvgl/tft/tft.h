@@ -15,10 +15,9 @@
 /*********************
  *      DEFINES
  *********************/
-#define TFT_HOR_RES LV_HOR_RES_MAX
-#define TFT_VER_RES LV_VER_RES_MAX
-#define TFT_NO_TEARING 0
-
+#define TFT_HOR_RES     800
+#define TFT_VER_RES     480
+#define TFT_NO_TEARING  1    /*1: no tearing but slower*/
 
 /**********************
  *      TYPEDEFS

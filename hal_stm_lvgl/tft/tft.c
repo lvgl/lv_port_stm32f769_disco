@@ -72,7 +72,6 @@ static void DMA_TransferError(DMA_HandleTypeDef *han);
  **********************/
 
 extern LTDC_HandleTypeDef hltdc_discovery;
-static DMA2D_HandleTypeDef hdma2d;
 extern DSI_HandleTypeDef hdsi_discovery;
 DSI_VidCfgTypeDef hdsivideo_handle;
 DSI_CmdCfgTypeDef CmdCfg;
@@ -80,7 +79,11 @@ DSI_LPCmdTypeDef LPCmd;
 DSI_PLLInitTypeDef dsiPllInit;
 static RCC_PeriphCLKInitTypeDef  PeriphClkInitStruct;
 
+#if LV_COLOR_DEPTH == 16
+static uint16_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
+#else
 static uint32_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
+#endif
 
 static lv_disp_drv_t disp_drv;
 static volatile bool gpu_busy;
@@ -154,10 +157,10 @@ void tft_init(void)
 
 	DMA_Config();
 
-	static lv_color_t buf[TFT_HOR_RES * 40];
-	static lv_color_t buf2[TFT_HOR_RES * 40];
+	static lv_color_t buf[TFT_HOR_RES * 120];
+	static lv_color_t buf2[TFT_HOR_RES * 120];
 	static lv_disp_buf_t disp_buf;
-	lv_disp_buf_init(&disp_buf, buf, buf2, TFT_HOR_RES * 40);
+	lv_disp_buf_init(&disp_buf, buf, buf2, TFT_HOR_RES * 120);
 
 	lv_disp_drv_init(&disp_drv);
 	disp_drv.flush_cb = tft_flush_cb;
@@ -173,6 +176,8 @@ void tft_init(void)
 
 static void tft_flush_cb(lv_disp_drv_t * drv, const lv_area_t * area, lv_color_t * color_p)
 {
+//    lv_disp_flush_ready(drv);
+//    return;
 	SCB_CleanInvalidateDCache();
 
 	/*Truncate the area to the screen*/
@@ -243,7 +248,11 @@ static void LCD_Config(void)
 	CmdCfg.HSPolarity            = DSI_HSYNC_ACTIVE_HIGH;
 	CmdCfg.VSPolarity            = DSI_VSYNC_ACTIVE_HIGH;
 	CmdCfg.DEPolarity            = DSI_DATA_ENABLE_ACTIVE_HIGH;
+#if LV_COLOR_DEPTH == 16
+	CmdCfg.ColorCoding           = DSI_RGB565;
+#else
 	CmdCfg.ColorCoding           = DSI_RGB888;
+#endif
 	CmdCfg.CommandSize           = HACT;
 	CmdCfg.TearingEffectSource   = DSI_TE_EXTERNAL;
 	CmdCfg.TearingEffectPolarity = DSI_TE_RISING_EDGE;
@@ -283,8 +292,11 @@ static void LCD_Config(void)
 	/* Initialize the OTM8009A LCD Display IC Driver (KoD LCD IC Driver)
 	 *  depending on configuration set in 'hdsivideo_handle'.
 	 */
-	OTM8009A_Init(OTM8009A_COLMOD_RGB888, LCD_ORIENTATION_LANDSCAPE);
-
+#if LV_COLOR_DEPTH == 16
+	OTM8009A_Init(OTM8009A_FORMAT_RBG565, LCD_ORIENTATION_LANDSCAPE);
+#else
+	OTM8009A_Init(OTM8009A_FORMAT_RGB888, LCD_ORIENTATION_LANDSCAPE);
+#endif
 	LPCmd.LPGenShortWriteNoP    = DSI_LP_GSW0P_DISABLE;
 	LPCmd.LPGenShortWriteOneP   = DSI_LP_GSW1P_DISABLE;
 	LPCmd.LPGenShortWriteTwoP   = DSI_LP_GSW2P_DISABLE;
@@ -396,7 +408,11 @@ static void LTDC_Init(void)
    Layercfg.WindowX1 = HACT;
    Layercfg.WindowY0 = 0;
    Layercfg.WindowY1 = BSP_LCD_GetYSize();
+#if LV_COLOR_DEPTH == 16
+   Layercfg.PixelFormat = LTDC_PIXEL_FORMAT_RGB565;
+#else
    Layercfg.PixelFormat = LTDC_PIXEL_FORMAT_ARGB8888;
+#endif
    Layercfg.FBStartAdress = LAYER0_ADDRESS;
    Layercfg.Alpha = 255;
    Layercfg.Alpha0 = 0;
@@ -405,7 +421,7 @@ static void LTDC_Init(void)
    Layercfg.Backcolor.Red = 0;
    Layercfg.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA;
    Layercfg.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
-   Layercfg.ImageWidth = 800;
+   Layercfg.ImageWidth = BSP_LCD_GetXSize();;
    Layercfg.ImageHeight = BSP_LCD_GetYSize();
 
    HAL_LTDC_ConfigLayer(&hltdc_discovery, &Layercfg, 0);
@@ -438,7 +454,7 @@ void HAL_DSI_EndOfRefreshCallback(DSI_HandleTypeDef *hdsi)
         /* Disable DSI Wrapper */
         __HAL_DSI_WRAPPER_DISABLE(hdsi);
         /* Update LTDC configuaration */
-        LTDC_LAYER(&hltdc_discovery, 0)->CFBAR  = LAYER0_ADDRESS + LCD_ActiveRegion  * HACT * 4;
+        LTDC_LAYER(&hltdc_discovery, 0)->CFBAR  = LAYER0_ADDRESS + LCD_ActiveRegion  * HACT * sizeof(lv_color_t);
         __HAL_LTDC_RELOAD_CONFIG(&hltdc_discovery);
         __HAL_DSI_WRAPPER_ENABLE(hdsi);
 
@@ -485,8 +501,13 @@ static void DMA_Config(void)
   DmaHandle.Init.Direction = DMA_MEMORY_TO_MEMORY;          /* M2M transfer mode                */
   DmaHandle.Init.PeriphInc = DMA_PINC_ENABLE;               /* Peripheral increment mode Enable */
   DmaHandle.Init.MemInc = DMA_MINC_ENABLE;                  /* Memory increment mode Enable     */
+#if LV_COLOR_DEPTH == 16
+  DmaHandle.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD; /* Peripheral data alignment : 16bit */
+  DmaHandle.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;    /* memory data alignment : 16bit     */
+#else
   DmaHandle.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD; /* Peripheral data alignment : 16bit */
   DmaHandle.Init.MemDataAlignment = DMA_MDATAALIGN_WORD;    /* memory data alignment : 16bit     */
+#endif
   DmaHandle.Init.Mode = DMA_NORMAL;                         /* Normal DMA mode                  */
   DmaHandle.Init.Priority = DMA_PRIORITY_HIGH;              /* priority level : high            */
   DmaHandle.Init.FIFOMode = DMA_FIFOMODE_ENABLE;            /* FIFO mode enabled                */
