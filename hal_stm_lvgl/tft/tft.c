@@ -45,7 +45,6 @@
 #define HACT                (OTM8009A_800X480_WIDTH / ZONES)
 
 #define LAYER0_ADDRESS               (LCD_FB_START_ADDRESS)
-#define LAYER1_ADDRESS               (LCD_FB_START_ADDRESS + 800*480*4)
 
 /**********************
  *      TYPEDEFS
@@ -80,14 +79,12 @@ DSI_PLLInitTypeDef dsiPllInit;
 static RCC_PeriphCLKInitTypeDef  PeriphClkInitStruct;
 
 #if LV_COLOR_DEPTH == 16
-static uint16_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
+static uint16_t * my_fb = (uint16_t *)LAYER0_ADDRESS;
 #else
 static uint32_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
 #endif
 
 static lv_disp_drv_t disp_drv;
-static volatile bool gpu_busy;
-static volatile bool copy_buf;
 
 static DMA_HandleTypeDef     DmaHandle;
 static lv_disp_drv_t disp_drv;
