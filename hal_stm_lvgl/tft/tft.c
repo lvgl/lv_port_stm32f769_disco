@@ -154,10 +154,10 @@ void tft_init(void)
 
 	DMA_Config();
 
-	static lv_color_t buf[TFT_HOR_RES * 120];
-	static lv_color_t buf2[TFT_HOR_RES * 120];
+	static lv_color_t buf[TFT_HOR_RES * 48];
+	static lv_color_t buf2[TFT_HOR_RES * 48];
 	static lv_disp_buf_t disp_buf;
-	lv_disp_buf_init(&disp_buf, buf, buf2, TFT_HOR_RES * 120);
+	lv_disp_buf_init(&disp_buf, buf, buf2, TFT_HOR_RES * 48);
 
 	lv_disp_drv_init(&disp_drv);
 	disp_drv.flush_cb = tft_flush_cb;
@@ -583,5 +583,34 @@ void DMA_STREAM_IRQHANDLER(void)
 {
     /* Check the interrupt and clear flag */
     HAL_DMA_IRQHandler(&DmaHandle);
+}
+
+/**
+  * @brief  Initialize the BSP LCD Msp.
+  * Do not DMA2D is initialized by LVGL
+  */
+void BSP_LCD_MspInit(void)
+{
+  /** @brief Enable the LTDC clock */
+  __HAL_RCC_LTDC_CLK_ENABLE();
+
+  /** @brief Toggle Sw reset of LTDC IP */
+  __HAL_RCC_LTDC_FORCE_RESET();
+  __HAL_RCC_LTDC_RELEASE_RESET();
+
+  /** @brief Enable DSI Host and wrapper clocks */
+  __HAL_RCC_DSI_CLK_ENABLE();
+
+  /** @brief Soft Reset the DSI Host and wrapper */
+  __HAL_RCC_DSI_FORCE_RESET();
+  __HAL_RCC_DSI_RELEASE_RESET();
+
+  /** @brief NVIC configuration for LTDC interrupt that is now enabled */
+  HAL_NVIC_SetPriority(LTDC_IRQn, 3, 0);
+  HAL_NVIC_EnableIRQ(LTDC_IRQn);
+
+  /** @brief NVIC configuration for DSI interrupt that is now enabled */
+  HAL_NVIC_SetPriority(DSI_IRQn, 3, 0);
+  HAL_NVIC_EnableIRQ(DSI_IRQn);
 }
 
