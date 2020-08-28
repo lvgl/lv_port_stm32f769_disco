@@ -80,7 +80,7 @@ typedef int16_t lv_coord_t;
 #define LV_MEM_CUSTOM      0
 #if LV_MEM_CUSTOM == 0
 /* Size of the memory used by `lv_mem_alloc` in bytes (>= 2kB)*/
-#  define LV_MEM_SIZE    (32U * 1024U)
+#  define LV_MEM_SIZE    (48U * 1024U)
 
 /* Complier prefix for a big array declaration */
 #  define LV_MEM_ATTR
@@ -175,6 +175,7 @@ typedef void * lv_group_user_data_t;
 /* 1: Enable GPU interface*/
 #define LV_USE_GPU              0
 #define LV_USE_GPU_STM32_DMA2D  1
+#define LV_GPU_DMA2D_CMSIS_INCLUDE "stm32f769xx.h"
 
 /* 1: Enable file system (might be required for images */
 #define LV_USE_FILESYSTEM       1
