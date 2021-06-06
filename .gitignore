@@ -1,3 +1,9 @@
+# STM32CubeIDE
+Debug/
+.settings/
+*.launch
+*.cfg
+
 # Prerequisites
 *.d
 
