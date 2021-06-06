@@ -12,8 +12,8 @@
 <targetDefinitions>
   <board id="stm32f769i-disco">
     <name>STM32F769I-DISCO</name>
-    <dbgIF>JTAG</dbgIF>
     <dbgIF>SWD</dbgIF>
+    <dbgIF>JTAG</dbgIF>
     <dbgDEV>ST-Link</dbgDEV>
     <mcuId>stm32f769nihx</mcuId>
   </board>

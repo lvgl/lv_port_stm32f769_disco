@@ -265,8 +265,6 @@ uint8_t BSP_TS_GetState(TS_StateTypeDef *TS_State)
   uint16_t tmp;
   uint16_t Raw_x[TS_MAX_NB_TOUCH];
   uint16_t Raw_y[TS_MAX_NB_TOUCH];
-  uint16_t xDiff;
-  uint16_t yDiff;
   uint32_t index;
 #if (TS_MULTI_TOUCH_SUPPORTED == 1)
   uint32_t weight = 0;
@@ -300,15 +298,8 @@ uint8_t BSP_TS_GetState(TS_StateTypeDef *TS_State)
         Raw_y[index] = FT_6206_MAX_HEIGHT - 1 - Raw_y[index];
       }
             
-      xDiff = Raw_x[index] > _x[index]? (Raw_x[index] - _x[index]): (_x[index] - Raw_x[index]);
-      yDiff = Raw_y[index] > _y[index]? (Raw_y[index] - _y[index]): (_y[index] - Raw_y[index]);
-
-      if ((xDiff + yDiff) > 5)
-      {
-        _x[index] = Raw_x[index];
-        _y[index] = Raw_y[index];
-      }
-
+      _x[index] = Raw_x[index];
+      _y[index] = Raw_y[index];
 
       TS_State->touchX[index] = _x[index];
       TS_State->touchY[index] = _y[index];

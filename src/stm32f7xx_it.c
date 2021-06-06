@@ -51,7 +51,6 @@ void SysTick_Handler(void)
   * @param  None
   * @retval None
   */
-void DSI_IRQHandler(void)
-{
+void DSI_IRQHandler(void){
   HAL_DSI_IRQHandler(&hdsi_discovery);
 }

@@ -14,13 +14,12 @@
 #include "hal_stm_lvgl/tft/tft.h"
 #include "hal_stm_lvgl/touchpad/touchpad.h"
 #include "lvgl/lvgl.h"
-#include "lv_examples/lv_tests/lv_test_theme/lv_test_theme_2.h"
+#include "lv_examples/lv_examples.h"
 
 static void SystemClock_Config(void);
 static void CPU_CACHE_Enable(void);
 
-int main(void)
-{
+int main(void) {
 
 	/* Enable the CPU Cache */
 	CPU_CACHE_Enable();
@@ -39,20 +38,17 @@ int main(void)
 
 	SystemClock_Config();
 
-
 	lv_init();
 
 	tft_init();
 	touchpad_init();
 
-//	demo_create();
-	benchmark_create();
-//	lv_test_theme_2();
+	lv_demo_widgets();
+//	lv_demo_printer();
 
 	while(1) {
-		lv_task_handler();
+	    lv_task_handler();
 		HAL_Delay(5);
-
 	}
 }
 

@@ -61,7 +61,6 @@ static bool touchpad_read_cb(lv_indev_drv_t * drv, lv_indev_data_t *data)
 {
 	static int16_t last_x = 0;
 	static int16_t last_y = 0;
-
 	BSP_TS_GetState(&TS_State);
 	if(TS_State.touchDetected != 0) {
 		data->point.x = TS_State.touchX[0];
