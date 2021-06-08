@@ -14,7 +14,8 @@
 #include "hal_stm_lvgl/tft/tft.h"
 #include "hal_stm_lvgl/touchpad/touchpad.h"
 #include "lvgl/lvgl.h"
-#include "lv_examples/lv_examples.h"
+#include "lvgl/examples/lv_examples.h"
+#include "lv_demos/lv_demo.h"
 
 static void SystemClock_Config(void);
 static void CPU_CACHE_Enable(void);
@@ -44,7 +45,6 @@ int main(void) {
 	touchpad_init();
 
 	lv_demo_widgets();
-//	lv_demo_printer();
 
 	while(1) {
 	    lv_task_handler();

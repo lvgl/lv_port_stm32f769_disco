@@ -154,16 +154,17 @@ void tft_init(void)
 
 	DMA_Config();
 
-	static lv_color_t buf[TFT_HOR_RES * 48];
-	static lv_color_t buf2[TFT_HOR_RES * 48];
-	static lv_disp_buf_t disp_buf;
-	lv_disp_buf_init(&disp_buf, buf, buf2, TFT_HOR_RES * 48);
+	static lv_color_t disp_buf1[TFT_HOR_RES * 48];
+	static lv_color_t disp_buf2[TFT_HOR_RES * 48];
+	static lv_disp_draw_buf_t buf;
+	lv_disp_draw_buf_init(&buf, disp_buf1, disp_buf2, TFT_HOR_RES * 48);
 
 	lv_disp_drv_init(&disp_drv);
+	disp_drv.draw_buf = &buf;
 	disp_drv.flush_cb = tft_flush_cb;
 	disp_drv.monitor_cb = monitor_cb;
-	disp_drv.buffer = &disp_buf;
-
+	disp_drv.hor_res = 800;
+	disp_drv.ver_res = 480;
 	lv_disp_drv_register(&disp_drv);
 }
 
@@ -469,7 +470,7 @@ void HAL_DSI_EndOfRefreshCallback(DSI_HandleTypeDef *hdsi)
         __HAL_DSI_WRAPPER_ENABLE(&hdsi_discovery);
 
         LCD_SetUpdateRegion(0);
-        if(disp_drv.buffer)  lv_disp_flush_ready(&disp_drv);
+        if(disp_drv.draw_buf)  lv_disp_flush_ready(&disp_drv);
     }
 }
 #endif
@@ -613,4 +614,3 @@ void BSP_LCD_MspInit(void)
   HAL_NVIC_SetPriority(DSI_IRQn, 3, 0);
   HAL_NVIC_EnableIRQ(DSI_IRQn);
 }
-
