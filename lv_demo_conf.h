@@ -1,16 +1,17 @@
 /**
  * @file lv_demo_conf.h
- * Configuration file for v8.0.0
+ * Configuration file for v8.1.1-dev
  *
  */
 /*
  * COPY THIS FILE AS lv_demo_conf.h
  */
 
-#if 1 /*Set it to "1" to enable the content*/
+/* clang-format off */
+#if 0 /*Set it to "1" to enable the content*/
 
-#ifndef LV_EX_CONF_H
-#define LV_EX_CONF_H
+#ifndef LV_DEMO_CONF_H
+#define LV_DEMO_CONF_H
 
 
 /*******************
@@ -25,7 +26,7 @@
  *********************/
 
 /*Show some widget*/
-#define LV_USE_DEMO_WIDGETS        1
+#define LV_USE_DEMO_WIDGETS        0
 #if LV_USE_DEMO_WIDGETS
 #define LV_DEMO_WIDGETS_SLIDESHOW  0
 #endif
@@ -45,12 +46,14 @@
 /*Music player demo*/
 #define LV_USE_DEMO_MUSIC      0
 #if LV_USE_DEMO_MUSIC
-# define LV_DEMO_MUSIC_LANDSCAPE 0
-# define LV_DEMO_MUSIC_LARGE     0
-#define LV_DEMO_MUSIC_AUTO_PLAY  0
+# define LV_DEMO_MUSIC_SQUARE       0
+# define LV_DEMO_MUSIC_LANDSCAPE    0
+# define LV_DEMO_MUSIC_ROUND        0
+# define LV_DEMO_MUSIC_LARGE        0
+# define LV_DEMO_MUSIC_AUTO_PLAY    0
 #endif
 
-#endif /*LV_EX_CONF_H*/
+#endif /*LV_DEMO_CONF_H*/
 
 #endif /*End of "Content enable"*/
 
