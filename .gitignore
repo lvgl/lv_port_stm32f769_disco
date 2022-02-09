@@ -1,6 +1,7 @@
 # STM32CubeIDE
 Debug/
 .settings/
+.vscode/.cortex-debug*
 *.launch
 *.cfg
 

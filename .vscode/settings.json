@@ -1,0 +1,5 @@
+{
+	"cortex-debug.armToolchainPrefix": "arm-none-eabi",
+	"cortex-debug.armToolchainPath": "/opt/Toolchains/gcc-arm-none-eabi-10.3-2021.10/bin",
+	"cortex-debug.JLinkGDBServerPath": "/opt/SEGGER/JLink/JLinkGDBServerCLExe",
+}
