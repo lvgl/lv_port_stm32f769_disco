@@ -1,0 +1,27 @@
+name: Build project
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: arm-none-eabi-gcc
+      uses: carlosperate/arm-none-eabi-gcc-action@v1.3.0
+      with:
+        release: '10-2020-q4' # The arm-none-eabi-gcc release to use.
+    - name: Update submodules
+      run: git submodule update --init --recursive  
+    - name: Configure
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    - name: Build
+      run: cmake --build build
+    - uses: actions/upload-artifact@v2
+      with:
+        name: lv_stm32f769.bin
+        path: build/lv_stm32f769.bin
