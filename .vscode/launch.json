@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug (Local OpenOCD)",
+            "cwd": "${workspaceRoot}",
+            "executable": "${workspaceRoot}/build/debug/lv_stm32f769.elf",
+            "request": "launch",
+            "type": "cortex-debug",
+            "showDevDebugOutput": false,
+            "svdFile": "${workspaceRoot}/.vscode/STM32F769.svd",
+            "servertype": "openocd",
+            "searchDir": [
+                "/usr/share/openocd/scripts/",
+            ],
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f7x.cfg"
+            ],
+        },
+        {
+            "name": "Debug (Local JLink)",
+            "cwd": "${workspaceRoot}",
+            "executable": "${workspaceRoot}/build/debug/lv_stm32f769.elf",
+            "request": "launch",
+            "type": "cortex-debug",
+            "showDevDebugOutput": false,
+            "svdFile": "${workspaceRoot}/.vscode/STM32F769.svd",
+            "servertype": "jlink",
+            "interface": "swd",
+            "device": "STM32F769NI",
+            "runToMain": true,
+          }
+    ]
+}
