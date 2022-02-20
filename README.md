@@ -30,5 +30,5 @@ The [STM32F769 Discovery kit](https://www.st.com/en/evaluation-tools/32f769idisc
 
 
 ## Get started
-- Clone the project: `git clone https://github.com/littlevgl/stm32f429_disco_no_os_sw4stm32.git --recurse-submodules`
+- Clone the project: `git clone https://github.com/lvgl/lv_port_stm32f769_disco.git --recurse-submodules`
 - Import into STM32CubeIDE
