@@ -84,6 +84,7 @@
   * @brief  LCD FB_StartAddress  
   */
 #define LCD_FB_START_ADDRESS       ((uint32_t)0xC0000000)
+//#define LCD_FB_START_ADDRESS       ((uint32_t)0xD0000000)
    
 /** @brief Maximum number of LTDC layers
  */
