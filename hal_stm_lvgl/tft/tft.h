@@ -17,7 +17,7 @@
  *********************/
 #define TFT_HOR_RES     800
 #define TFT_VER_RES     480
-#define TFT_NO_TEARING  1    /*1: no tearing but slower*/
+#define TFT_NO_TEARING  0    /*1: no tearing but slower*/
 
 /**********************
  *      TYPEDEFS
