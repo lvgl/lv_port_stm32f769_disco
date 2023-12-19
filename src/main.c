@@ -20,11 +20,6 @@
 static void SystemClock_Config(void);
 static void CPU_CACHE_Enable(void);
 
-#include "Ubuntu.h"
-
-uint8_t a[256];
-uint32_t c;
-
 int main(void) {
 
 	/* Enable the CPU Cache */
@@ -49,10 +44,7 @@ int main(void) {
 	tft_init();
 	touchpad_init();
 
-//	lv_demo_benchmark_set_max_speed(true);
 	lv_demo_benchmark();
-
-//	lv_demo_widgets();
 
 	while(1) {
 	    lv_task_handler();
