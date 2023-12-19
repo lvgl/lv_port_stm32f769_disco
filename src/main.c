@@ -44,8 +44,8 @@ int main(void) {
 	tft_init();
 	touchpad_init();
 
-//	lv_demo_benchmark(LV_DEMO_BENCHMARK_MODE_RENDER_AND_DRIVER);
-	lv_demo_widgets();
+	lv_demo_benchmark();
+//	lv_demo_widgets();
 
 //	  lv_obj_t * main_cont = lv_obj_create(lv_scr_act());
 //	  lv_obj_center(main_cont);
@@ -66,21 +66,6 @@ int main(void) {
 //	          lv_label_set_text(label, "A");
 //	      }
 //	  }
-
-
-	uint32_t i;
-	for(i = 0; i < 1000; i++) {
-		lv_obj_invalidate(lv_scr_act());
-		lv_refr_now(NULL);
-	}
-
-
-
-	while(1) {
-	    lv_task_handler();
-//		HAL_Delay(1);
-	    lv_obj_invalidate(lv_scr_act());
-	}
 
 
 	while(1) {
