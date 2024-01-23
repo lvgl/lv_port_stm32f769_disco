@@ -44,29 +44,7 @@ int main(void) {
 	tft_init();
 	touchpad_init();
 
-	lv_demo_benchmark();
-//	lv_demo_widgets();
-
-//	  lv_obj_t * main_cont = lv_obj_create(lv_scr_act());
-//	  lv_obj_center(main_cont);
-//	  lv_obj_set_size(main_cont, 740, 400);
-//	  lv_obj_set_flex_flow(main_cont, LV_FLEX_FLOW_ROW_WRAP);
-//
-//	  uint32_t i;
-//	  for(i = 0; i < 20; i++) {
-//	      lv_obj_t * cont = lv_obj_create(main_cont);
-//	      lv_obj_set_size(cont, 130, 100);
-//	      lv_obj_set_style_pad_all(cont, 5, 0);
-//	      lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW_WRAP);
-//
-//	      uint32_t j;
-//	      for(j = 0; j < 5; j++) {
-//	          lv_obj_t * btn = lv_btn_create(cont);
-//	          lv_obj_t * label = lv_label_create(btn);
-//	          lv_label_set_text(label, "A");
-//	      }
-//	  }
-
+	lv_demo_widgets();
 
 	while(1) {
 	    lv_task_handler();

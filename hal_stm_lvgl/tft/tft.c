@@ -84,7 +84,7 @@ static uint16_t * my_fb = (uint16_t *)LAYER0_ADDRESS;
 static uint32_t * my_fb = (uint32_t *)LAYER0_ADDRESS;
 #endif
 
-static lv_disp_t * disp;
+static lv_display_t * disp;
 
 static DMA_HandleTypeDef     DmaHandle;
 static volatile int32_t x1_flush;
@@ -146,9 +146,9 @@ void tft_init(void)
 
 	static uint8_t buf1[TFT_HOR_RES * 48 * 2];
 	static uint8_t buf2[TFT_HOR_RES * 48 * 2];
-	disp = lv_disp_create(800, 480);
-	lv_disp_set_draw_buffers(disp, buf1, buf2, TFT_HOR_RES * 48 * 2, LV_DISP_RENDER_MODE_PARTIAL);
-	lv_disp_set_flush_cb(disp, tft_flush_cb);
+	disp = lv_display_create(800, 480);
+	lv_display_set_buffers(disp, buf1, buf2, TFT_HOR_RES * 48 * 2, LV_DISP_RENDER_MODE_PARTIAL);
+	lv_display_set_flush_cb(disp, tft_flush_cb);
 }
 
 /**********************
@@ -157,31 +157,7 @@ void tft_init(void)
 
 static void tft_flush_cb(lv_disp_t * disp, const lv_area_t * area, uint8_t * pxmap)
 {
-//	SCB_CleanInvalidateDCache();
-//	int32_t y;
-//	uint16_t * fb_tmp = my_fb;
-//	uint32_t px_map_stride = lv_area_get_width(area) * 2;
-//	lv_coord_t fb_stride = lv_disp_get_hor_res(disp);
-//	fb_tmp += area->y1 * fb_stride;
-//	fb_tmp += area->x1;
-//	for(y = area->y1; y <= area->y2; y++) {
-//		lv_memcpy(fb_tmp, pxmap, px_map_stride);
-//		pxmap += px_map_stride;
-//		fb_tmp += fb_stride;
-//	}
-//
-//#if TFT_NO_TEARING
-//		if(lv_disp_flush_is_last(disp)) refr_qry = true;
-//		else lv_disp_flush_ready(disp);
-//#else
-//		if(lv_disp_flush_is_last(&disp_drv)) HAL_DSI_Refresh(&hdsi_discovery);
-//
-//		lv_disp_flush_ready(&disp_drv);
-//#endif
-//	return;
 
-//    lv_disp_flush_ready(drv);
-//    return;
 	SCB_CleanInvalidateDCache();
 
 	/*Truncate the area to the screen*/
