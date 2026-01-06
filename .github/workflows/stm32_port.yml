@@ -21,7 +21,7 @@ jobs:
       run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
     - name: Build
       run: cmake --build build
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v5
       with:
         name: lv_stm32f769.bin
         path: build/lv_stm32f769.bin
